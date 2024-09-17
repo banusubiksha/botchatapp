@@ -1,19 +1,22 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, Button, Image, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { View, Text, TextInput, Button, Image, ScrollView, StyleSheet, Alert, TouchableOpacity, Animated, KeyboardAvoidingView, Platform } from 'react-native';
 import DocumentPicker from 'react-native-document-picker';
 import CustomButton from './CustomButton';
 import DateTimePicker from '@react-native-community/datetimepicker';
-
+import RNFS from 'react-native-fs';
+import { useDispatch } from 'react-redux';
+import axios from 'axios'; // Import axios for making API calls
 
 type FormDataKey = keyof typeof FormData;
 
 const ChatScreen = () => {
+  const dispatch = useDispatch(); 
+
   const [step, setStep] = useState(0);
+  const shakeAnimation = useRef(new Animated.Value(0)).current; 
   const [error, setError] = useState<string | null>(null);
-
-const [showDatePicker, setShowDatePicker] = useState(false);
-const [selectedDate, setSelectedDate] = useState<Date | null>(null);
-
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editField, setEditField] = useState<FormDataKey | null>(null);
   const [inputValue, setInputValue] = useState('');
@@ -21,6 +24,7 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     name: '',
     qualification: '',
     phone: '',
+    dob: '',
     about: '',
     skills: '',
     profilePhoto: '',
@@ -29,6 +33,7 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   const [messages, setMessages] = useState([
     { type: 'bot', text: 'Welcome! Please tell me your name.' }
   ]);
+  const [showButtons, setShowButtons] = useState(true); // State to control button visibility
 
   const chatSteps = [
     { type: 'text', prompt: 'Welcome! Please tell me your name.', key: 'name' },
@@ -44,7 +49,7 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
       key: 'phone', 
       validation: (value: string) => /^\d{10}$/.test(value)
     },
-    { type: 'date', prompt: 'Enter your date of birth.', key: 'dob' }, // New date of birth step
+    { type: 'date', prompt: 'Enter your date of birth.', key: 'dob' },
     { type: 'text', prompt: 'Tell me a bit about yourself.', key: 'about' },
     { type: 'text', prompt: 'What are your skills?', key: 'skills' },
     { type: 'image', prompt: 'Please upload a profile photo', key: 'profilePhoto' },
@@ -52,38 +57,69 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     { type: 'final', prompt: 'Thank you! You can now review and save your information.' }
   ];
 
+  const shakeInputContainer = () => {
+    Animated.sequence([
+      Animated.timing(shakeAnimation, {
+        toValue: 10, // Move 10px to the right
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: -10, // Move 10px to the left
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: 10, // Move back to the right
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(shakeAnimation, {
+        toValue: 0, // Move back to the original position
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  };
+
   const handleNextStep = (response: string) => {
     if (response.trim() === '') {
       setError('Please fill the field.');
-      setTimeout(() => setError(null), 2000); // Hide error message after 2 seconds
+      shakeInputContainer();
+      setTimeout(() => setError(null), 2000);
       return;
     }
-  
+
     const key = chatSteps[step].key as FormDataKey;
-  
+
     if (chatSteps[step].validation && !chatSteps[step].validation(response)) {
       setError('Invalid input, please try again.');
-      setTimeout(() => setError(null), 2000); // Hide error message after 2 seconds
+      setTimeout(() => setError(null), 2000);
+      shakeInputContainer();
       return;
     }
-  
-    // Proceed with normal processing of valid input
-    setFormData(prevFormData => ({ ...prevFormData, [key]: response }));
-    setInputValue(''); // Clear the input field after submission
-  
+
+    setFormData((prevFormData: any) => ({ ...prevFormData, [key]: response }));
+    setInputValue('');
+
     let newMessages = [...messages, { type: 'user', text: response }];
-  
+
     if (step < chatSteps.length - 1) {
       newMessages = [...newMessages, { type: 'bot', text: chatSteps[step + 1].prompt }];
       setStep(step + 1);
+      if (chatSteps[step + 1].type === 'menu') {
+        setShowButtons(true); // Show buttons if next step is menu
+      } else {
+        setShowButtons(false); // Hide buttons if next step is not menu
+      }
     } else {
       newMessages = [...newMessages, { type: 'bot', text: 'All set! You can now review and save your information.' }];
       setStep(step + 1);
+      setShowButtons(false); // Hide buttons on final step
     }
-  
+
     setMessages(newMessages);
   };
-  
 
   const handleImagePick = async () => {
     try {
@@ -91,9 +127,9 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
         type: [DocumentPicker.types.images],
       });
       if (result) {
-        const fileName = result.name || result.uri.split('/').pop();
-        setFormData(prevFormData => ({ ...prevFormData, profilePhoto: result.uri }));
-        handleNextStep(fileName || ''); 
+        const base64String = await RNFS.readFile(result.uri, 'base64');
+        setFormData((prevFormData: any) => ({ ...prevFormData, profilePhoto: base64String }));
+        handleNextStep(result.name || ''); 
       }
     } catch (err) {
       console.error('Image picking error: ', err);
@@ -107,7 +143,7 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
       });
       if (result) {
         const fileName = result.name || result.uri.split('/').pop();
-        setFormData(prevFormData => ({ ...prevFormData, document: result.uri }));
+        setFormData((prevFormData: any) => ({ ...prevFormData, document: result.uri }));
         handleNextStep(fileName || ''); 
       }
     } catch (err) {
@@ -134,14 +170,21 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     ]);
   };
 
-  const handleSaveInformation = () => {
-    Alert.alert('Success', 'Your details are saved successfully.');
-    setMessages([
-      ...messages,
-      { type: 'bot', text: 'Information saved!' }
-    ]);
-    setIsEditing(false);
-    setStep(chatSteps.findIndex(step => step.type === 'final'));
+  const handleSaveInformation = async () => {
+    try {
+      await axios.post('http://192.168.1.4:3000/auth/save-user-data', formData);
+      
+      Alert.alert('Success', 'Your details are saved successfully.');
+      setMessages([
+        ...messages,
+        { type: 'bot', text: 'Information saved!' }
+      ]);
+      setIsEditing(false);
+      setStep(chatSteps.findIndex(step => step.type === 'final'));
+    } catch (error) {
+      console.error('Error saving user data: ', error);
+      Alert.alert('Error', 'There was an error saving your information. Please try again.');
+    }
   };
 
   const renderEditOptions = () => {
@@ -184,56 +227,66 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
             </TouchableOpacity>
           </View>
         );
-        case 'date':
-      return (
-        <View style={styles.inputContainer}>
-          <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.sendButtonText}>
-              {selectedDate ? selectedDate.toDateString() : 'Select Date of Birth'}
-            </Text>
-          </TouchableOpacity>
-          {showDatePicker && (
-            <DateTimePicker
-              value={selectedDate || new Date()}
-              mode="date"
-              display="default"
-              onChange={(event, date) => {
-                setShowDatePicker(false);
-                if (date) {
-                  setSelectedDate(date);
-                  handleNextStep(date.toDateString());
-                }
-              }}
-            />
-          )}
-          {error && <Text style={styles.errorText}>{error}</Text>}
-        </View>
-      );
-      
-      case 'menu':
+      case 'date':
         return (
-          <View style={styles.buttonContainer}>
-            {currentStep.options?.map((option, index) => (
-              <CustomButton key={index} title={option} onPress={() => handleNextStep(option)} />
-            ))}
+          <View style={styles.inputContainer}>
+            <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
+              <Text style={styles.sendButtonText}>
+                {selectedDate ? selectedDate.toDateString() : 'Select Date of Birth'}
+              </Text>
+            </TouchableOpacity>
+            {showDatePicker && (
+              <DateTimePicker
+                value={selectedDate || new Date()}
+                mode="date"
+                display="default"
+                onChange={(event, date) => {
+                  setShowDatePicker(false);
+                  if (date) {
+                    setSelectedDate(date);
+                    handleNextStep(date.toDateString());
+                  }
+                }}
+              />
+            )}
+            {error && <Text style={styles.errorText}>{error}</Text>}
           </View>
         );
+      case 'menu':
+        return showButtons ? (
+          <View style={styles.buttonContainer}>
+            {currentStep.options?.map((option, index) => (
+              <CustomButton key={index} title={option} onPress={() => {
+                handleNextStep(option);
+                setShowButtons(false); // Hide buttons after selection
+              }} />
+            ))}
+          </View>
+        ) : null;
       case 'image':
-        return <CustomButton title="Upload Photo" onPress={handleImagePick} />;
+        return (
+          <View style={styles.buttonContainer}>
+            <CustomButton title="Upload Image" onPress={handleImagePick} />
+          </View>
+        );
       case 'document':
-        return <CustomButton title="Upload Document" onPress={handleDocumentPick} />;
+        return (
+          <View style={styles.buttonContainer}>
+            <CustomButton title="Upload Document" onPress={handleDocumentPick} />
+          </View>
+        );
       case 'final':
         return (
           <View style={styles.finalReviewContainer}>
             <Text style={styles.finalReviewText}>Name: {formData.name}</Text>
             <Text style={styles.finalReviewText}>Qualification: {formData.qualification}</Text>
             <Text style={styles.finalReviewText}>Phone: {formData.phone}</Text>
+            <Text style={styles.finalReviewText}>Date of Birth: {formData.dob}</Text>
             <Text style={styles.finalReviewText}>About: {formData.about}</Text>
             <Text style={styles.finalReviewText}>Skills: {formData.skills}</Text>
             {formData.profilePhoto ? (
               <Image source={{ uri: formData.profilePhoto }} style={styles.image} />
             ) : null}
-            {formData.document ? <Text style={styles.finalReviewText}>Document: Uploaded</Text> : null}
             <CustomButton title="Edit Information" onPress={handleEdit} />
             <CustomButton title="Save Information" onPress={handleSaveInformation} />
           </View>
@@ -244,135 +297,157 @@ const [selectedDate, setSelectedDate] = useState<Date | null>(null);
   };
 
   return (
-    <View style={styles.container}>
-      <ScrollView style={styles.chatContainer}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
+      <ScrollView style={styles.scrollViewContainer}>
         {messages.map((msg, index) => (
-          <View key={index} style={[
-              styles.message, 
-              msg.type === 'user' ? styles.userMessage : 
-              msg.type === 'error' ? styles.errorMessage : 
-              styles.botMessage
-            ]}>
-            <Text style={msg.type === 'error' ? styles.errorMessageText : styles.messageText}>
-              {msg.text}
-            </Text>
+          <View
+            key={index}
+            style={[
+              styles.messageContainer,
+              msg.type === 'bot' ? styles.botMessage : styles.userMessage,
+            ]}
+          >
+            <Text style={styles.messageText}>{msg.text}</Text>
           </View>
         ))}
+        
+        {/* Input container with shake animation applied */}
+        <Animated.View style={[styles.inputContainer, { transform: [{ translateX: shakeAnimation }] }]}>
+          {renderInputField()} 
+          {error && <Text style={styles.errorText}>{error}</Text>}
+        </Animated.View>
+  
+        {/* Render edit options if in editing mode */}
+        {isEditing && renderEditOptions()}
       </ScrollView>
-      {isEditing ? renderEditOptions() : renderInputField()}
-    </View>
+    </KeyboardAvoidingView>
   );
 };
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: '#fff',
+    padding: 10,
+    backgroundColor: '#f0f0f5', 
   },
-  chatContainer: {
-    flex: 1,
-    marginBottom: 10,
+  messageContainer: {
+    marginVertical: 5,
+    padding: 12,
+    borderRadius: 12,
+    maxWidth: '80%',
+    shadowColor: '#000', // Subtle shadow for better contrast
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 3, // For Android shadow
   },
-  message: {
-    marginVertical: 4,
-    padding: 8,
-    borderRadius: 55,
+  scrollViewContainer: {
+    paddingBottom: 20,
   },
-  userMessage: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#000000', 
+  scrollView: {
+    paddingHorizontal: 20,
+    paddingVertical: 10,
   },
   botMessage: {
+    backgroundColor: '#e1e1e6', 
     alignSelf: 'flex-start',
-    backgroundColor: '#000000', 
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    maxWidth: '80%',
+    shadowColor: '#000', // Subtle shadow
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
   },
-  errorMessage: {
-    backgroundColor: '#f8d7da',
-    alignSelf: 'center',
+  userMessage: {
+    backgroundColor: '#d1ffd3', 
+    alignSelf: 'flex-end',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+    maxWidth: '80%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+  },
+  messageText: {
+    fontSize: 16,
+    color: '#000', 
   },
   inputContainer: {
     flexDirection: 'row',
-    alignItems: 'flex-end',
-    marginTop: 8,
-    marginBottom:10,
-  },
-  inputWrapper: {
-    position: 'relative',
-    width: '100%',
+    alignItems: 'center',
+    marginVertical: 40,
+    paddingHorizontal: 10,
   },
   input: {
     flex: 1,
-    height:40,
-    borderColor: '#ccc', 
+    height: 42,
+    borderColor: '#ccc',
     borderWidth: 1,
-    borderRadius: 40,
-    padding: 10,
-    color: '#000000', 
-    backgroundColor: '#ffffff', 
-  },
- 
-  sendButton: {
-    backgroundColor: '#000000',
-    padding: 10,
-    borderRadius: 5,
-    marginLeft: 10,
-  },
-  sendButtonText: {
-    color: '#fff',
-  },
-  buttonContainer: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    marginTop: 8,
-  },
-  finalReviewContainer: {
-    marginTop: 20,
-  },
-  finalReviewText: {
-    marginBottom: 8,
-    color: '#000000', 
-  },
-  image: {
-    width: 100,
-    height: 100,
     borderRadius: 8,
-    marginTop: 8,
-    marginBottom: 16,
-    borderColor: '#000000', 
-    borderWidth: 1,
-  },
-  errorMessageText: {
-    color: 'red',
-  },
-  editOptionsContainer: {
-    flexDirection: 'column',
-    alignItems: 'stretch',
-    marginTop: 16,
-    
-  },
-  messageText: {
-    color: '#fff', 
-    fontSize:13,
+    paddingHorizontal: 12,
+    backgroundColor: '#ffffff',
   },
   inputError: {
     borderColor: 'red',
   },
   errorText: {
     color: 'red',
-    position: 'absolute',
-    bottom: -20, // Adjust based on your layout
-    left: 0,
-    fontSize: 12,
+    marginLeft: 10,
+  },
+  sendButton: {
+    marginLeft: 10,
+    padding: 12,
+    backgroundColor: '#0b0b0b', 
+    borderRadius: 8,
+  },
+  sendButtonText: {
+    color: '#ffffff',
+    fontWeight: 'bold',
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-around', // Center the buttons
+    marginVertical: 10,
   },
   datePickerButton: {
-    backgroundColor: '#000000',
     padding: 10,
-    borderRadius: 5,
-    marginVertical: 10,
+    backgroundColor: '#090909',
+    borderRadius: 8,
     alignItems: 'center',
   },
- 
+  finalReviewContainer: {
+    marginVertical: 10,
+    padding: 15,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+  },
+  finalReviewText: {
+    fontSize: 16,
+    marginVertical: 3,
+    color: '#333', 
+  },
+  image: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginVertical: 10,
+  },
+  editOptionsContainer: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
+    marginVertical: 10,
+  },
 });
 
 export default ChatScreen;
