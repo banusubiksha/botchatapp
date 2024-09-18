@@ -13,6 +13,10 @@ const ChatScreen = () => {
   const dispatch = useDispatch(); 
 
   const [step, setStep] = useState(0);
+  const [showButtonForStep, setShowButtonForStep] = useState<number | null>(null);
+
+  const [showEditOptions, setShowEditOptions] = useState(true);
+
   const shakeAnimation = useRef(new Animated.Value(0)).current; 
   const [error, setError] = useState<string | null>(null);
   const [showDatePicker, setShowDatePicker] = useState(false);
@@ -89,37 +93,67 @@ const ChatScreen = () => {
       setTimeout(() => setError(null), 2000);
       return;
     }
-
+  
     const key = chatSteps[step].key as FormDataKey;
-
+  
+    // If the input validation fails, show error
     if (chatSteps[step].validation && !chatSteps[step].validation(response)) {
       setError('Invalid input, please try again.');
-      setTimeout(() => setError(null), 2000);
       shakeInputContainer();
+      setTimeout(() => setError(null), 2000);
       return;
     }
-
+  
+    // Update the formData with the new input
     setFormData((prevFormData: any) => ({ ...prevFormData, [key]: response }));
     setInputValue('');
-
-    let newMessages = [...messages, { type: 'user', text: response }];
-
-    if (step < chatSteps.length - 1) {
-      newMessages = [...newMessages, { type: 'bot', text: chatSteps[step + 1].prompt }];
-      setStep(step + 1);
-      if (chatSteps[step + 1].type === 'menu') {
-        setShowButtons(true); // Show buttons if next step is menu
-      } else {
-        setShowButtons(false); // Hide buttons if next step is not menu
-      }
+  
+    // Update the messages with the user's response
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      { type: 'user', text: response }
+    ]);
+  
+    // Check if the app is in editing mode
+    if (isEditing) {
+      // Exit editing mode and directly go back to review screen
+      setIsEditing(false);
+      setMessages((prevMessages) => [
+        ...prevMessages,
+        { type: 'bot', text: 'You can now review and save your information.' }
+      ]);
+      
+      // Go back to the review step (where the user can save or continue editing)
+      setStep(chatSteps.findIndex(step => step.type === 'final'));
+      setShowButtonForStep(null);
     } else {
-      newMessages = [...newMessages, { type: 'bot', text: 'All set! You can now review and save your information.' }];
-      setStep(step + 1);
-      setShowButtons(false); // Hide buttons on final step
+      // If not editing, continue to the next step in the flow
+      if (step < chatSteps.length - 1) {
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          { type: 'bot', text: chatSteps[step + 1].prompt }
+        ]);
+        setStep(step + 1);
+        if (chatSteps[step + 1].type === 'menu') {
+          setShowButtons(true);
+          setShowButtonForStep(step + 1); // Show buttons
+        } else {
+          setShowButtons(false);
+           setShowButtonForStep(null); // Hide buttons
+        }
+      } else {
+        setMessages((prevMessages) => [
+          ...prevMessages,
+          { type: 'bot', text: 'All set! You can now review and save your information.' }
+        ]);
+        setStep(chatSteps.findIndex(step => step.type === 'final'));
+        setShowButtons(false);
+      }
     }
-
-    setMessages(newMessages);
   };
+  
+  
+  
 
   const handleImagePick = async () => {
     try {
@@ -157,18 +191,32 @@ const ChatScreen = () => {
       { type: 'bot', text: 'Which field would you like to edit?' },
     ]);
     setIsEditing(true);
+    setShowButtons(false);
+    setStep(chatSteps.findIndex(step => step.type==='text'));
+  };
+  const handleEditField = (field: FormDataKey) => {
+    setEditField(field); // Set the field being edited
+    setIsEditing(true);  // Enable edit mode
+  
+    // Find the step index for the selected field
+    const stepIndex = chatSteps.findIndex((step) => step.key === field);
+    
+    // Set the current step to the one corresponding to the field being edited
+    setStep(stepIndex);
+  
+    // Update the conversation messages to prompt the user for the specific field
+    setMessages((prevMessages) => [
+      ...prevMessages,
+      { type: 'bot', text: `You are editing your ${field}. ${chatSteps[stepIndex].prompt}` }
+    ]);
+  
+    setShowButtons(false); 
+    setShowEditOptions(false); // Hide buttons while editing
+    
   };
 
-  const handleEditField = (field: FormDataKey) => {
-    setEditField(field);
-    setIsEditing(false);
-    const stepIndex = chatSteps.findIndex(step => step.key === field);
-    setStep(stepIndex);
-    setMessages([
-      ...messages,
-      { type: 'bot', text: chatSteps[stepIndex].prompt }
-    ]);
-  };
+  
+  
 
   const handleSaveInformation = async () => {
     try {
@@ -188,7 +236,7 @@ const ChatScreen = () => {
   };
 
   const renderEditOptions = () => {
-    return (
+    return showEditOptions ? ( // Use the state variable to control visibility
       <View style={styles.editOptionsContainer}>
         {Object.keys(formData).map((key) => (
           <CustomButton
@@ -199,8 +247,9 @@ const ChatScreen = () => {
         ))}
         <CustomButton title="Save Information" onPress={handleSaveInformation} />
       </View>
-    );
+    ) : null;
   };
+  
 
   const renderInputField = () => {
     const currentStep = chatSteps[step];
@@ -210,7 +259,7 @@ const ChatScreen = () => {
     switch (currentStep.type) {
       case 'text':
         return (
-          <View style={styles.inputContainer}>
+          <Animated.View style={styles.inputContainer}>
             <TextInput
               placeholder={error || "Type your response..."}
               style={[
@@ -225,33 +274,42 @@ const ChatScreen = () => {
             <TouchableOpacity style={styles.sendButton} onPress={() => handleNextStep(inputValue)}>
               <Text style={styles.sendButtonText}>Send</Text>
             </TouchableOpacity>
-          </View>
+          </Animated.View>
         );
-      case 'date':
-        return (
-          <View style={styles.inputContainer}>
-            <TouchableOpacity style={styles.datePickerButton} onPress={() => setShowDatePicker(true)}>
-              <Text style={styles.sendButtonText}>
-                {selectedDate ? selectedDate.toDateString() : 'Select Date of Birth'}
-              </Text>
-            </TouchableOpacity>
-            {showDatePicker && (
-              <DateTimePicker
-                value={selectedDate || new Date()}
-                mode="date"
-                display="default"
-                onChange={(event, date) => {
-                  setShowDatePicker(false);
-                  if (date) {
-                    setSelectedDate(date);
-                    handleNextStep(date.toDateString());
-                  }
-                }}
-              />
-            )}
-            {error && <Text style={styles.errorText}>{error}</Text>}
-          </View>
-        );
+        case 'date':
+          const today = new Date();
+          // Calculate the date 18 years ago
+          const eighteenYearsAgo = new Date(today.getFullYear() - 18, today.getMonth(), today.getDate());
+        
+          return (
+            <View style={styles.inputContainer}>
+              <TouchableOpacity
+                style={styles.datePickerButton}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <Text style={styles.sendButtonText}>
+                  {selectedDate ? selectedDate.toDateString() : 'Select Date of Birth'}
+                </Text>
+              </TouchableOpacity>
+              {showDatePicker && (
+                <DateTimePicker
+                  value={selectedDate || new Date()}
+                  mode="date"
+                  display="default"
+                  maximumDate={eighteenYearsAgo} // Restrict to dates before 18 years ago
+                  onChange={(event, date) => {
+                    setShowDatePicker(false);
+                    if (date) {
+                      setSelectedDate(date);
+                      handleNextStep(date.toDateString());
+                    }
+                  }}
+                />
+              )}
+              {error && <Text style={styles.errorText}>{error}</Text>}
+            </View>
+          );
+        
       case 'menu':
         return showButtons ? (
           <View style={styles.buttonContainer}>
@@ -262,7 +320,14 @@ const ChatScreen = () => {
               }} />
             ))}
           </View>
-        ) : null;
+        ) : <View style={styles.buttonContainer}>
+        {currentStep.options?.map((option, index) => (
+          <CustomButton key={index} title={option} onPress={() => {
+            handleNextStep(option);
+            setShowButtons(false); // Hide buttons after selection
+          }} />
+        ))}
+      </View>;
       case 'image':
         return (
           <View style={styles.buttonContainer}>
@@ -276,7 +341,7 @@ const ChatScreen = () => {
           </View>
         );
       case 'final':
-        return (
+        return !isEditing ? (
           <View style={styles.finalReviewContainer}>
             <Text style={styles.finalReviewText}>Name: {formData.name}</Text>
             <Text style={styles.finalReviewText}>Qualification: {formData.qualification}</Text>
@@ -290,7 +355,7 @@ const ChatScreen = () => {
             <CustomButton title="Edit Information" onPress={handleEdit} />
             <CustomButton title="Save Information" onPress={handleSaveInformation} />
           </View>
-        );
+        ) : null;
       default:
         return null;
     }
@@ -301,7 +366,11 @@ const ChatScreen = () => {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView style={styles.scrollViewContainer}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={{ paddingBottom: 100 }} // Adjust padding to accommodate the fixed input container and buttons
+      >
+        {/* Chat messages rendering */}
         {messages.map((msg, index) => (
           <View
             key={index}
@@ -314,17 +383,21 @@ const ChatScreen = () => {
           </View>
         ))}
         
-        {/* Input container with shake animation applied */}
-        <Animated.View style={[styles.inputContainer, { transform: [{ translateX: shakeAnimation }] }]}>
-          {renderInputField()} 
-          {error && <Text style={styles.errorText}>{error}</Text>}
-        </Animated.View>
-  
         {/* Render edit options if in editing mode */}
-        {isEditing && renderEditOptions()}
+        {isEditing && (
+          <View style={styles.editOptionsContainer}>
+            {renderEditOptions()}
+          </View>
+        )}
       </ScrollView>
+  
+      {/* Fixed input container */}
+      <View style={[styles.inputContainer, { position: 'absolute', bottom: 0, width: '100%' }]}>
+        {renderInputField()}
+      </View>
     </KeyboardAvoidingView>
   );
+  
 };
 const styles = StyleSheet.create({
   container: {
@@ -337,7 +410,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     maxWidth: '80%',
-    shadowColor: '#000', // Subtle shadow for better contrast
+    shadowColor: '#df2f2f', // Subtle shadow for better contrast
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 5,
@@ -414,7 +487,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-around', // Center the buttons
-    marginVertical: 10,
+    marginVertical: 100,
   },
   datePickerButton: {
     padding: 10,
