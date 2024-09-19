@@ -1,12 +1,22 @@
-// actions.ts
-export const LOGIN_SUCCESS = 'LOGIN_SUCCESS';
-export const LOGOUT = 'LOGOUT';
+export const SAVE_FORM_DATA = 'SAVE_FORM_DATA';
 
-export const loginSuccess = (user: any) => ({
-  type: LOGIN_SUCCESS,
-  payload: user,
+// Define the form data type
+export interface FormData {
+  name: string;
+  qualification: string;
+  phone: string;
+  dob: string;
+  about: string;
+  skills: string;
+  profilePhoto: string;
+  document: string;
+}
+
+// Action creator
+export const saveFormData = (formData: FormData) => ({
+  type: SAVE_FORM_DATA,
+  payload: formData,
 });
 
-export const logout = () => ({
-  type: LOGOUT,
-});
+// Define the action type
+export type FormAction = ReturnType<typeof saveFormData>;

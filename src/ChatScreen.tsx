@@ -5,16 +5,22 @@ import CustomButton from './CustomButton';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import RNFS from 'react-native-fs';
 import { useDispatch } from 'react-redux';
-import axios from 'axios'; // Import axios for making API calls
+import { saveFormData } from './actions';
+declare module "*.png";
+
+import botProfileImage from './assets/logo.png'; 
+
+import axios from 'axios'; 
 
 type FormDataKey = keyof typeof FormData;
 
 const ChatScreen = () => {
   const dispatch = useDispatch(); 
-
+  
   const [step, setStep] = useState(0);
   const [showButtonForStep, setShowButtonForStep] = useState<number | null>(null);
-
+  const botProfileImage = require('./assets/logo.png'); 
+  
   const [showEditOptions, setShowEditOptions] = useState(true);
 
   const shakeAnimation = useRef(new Animated.Value(0)).current; 
@@ -124,6 +130,9 @@ const ChatScreen = () => {
       ]);
       
       // Go back to the review step (where the user can save or continue editing)
+      setShowEditOptions(true);
+    setIsEditing(false);
+    setShowButtons(false);
       setStep(chatSteps.findIndex(step => step.type === 'final'));
       setShowButtonForStep(null);
     } else {
@@ -192,6 +201,7 @@ const ChatScreen = () => {
     ]);
     setIsEditing(true);
     setShowButtons(false);
+    setShowEditOptions(true);
     setStep(chatSteps.findIndex(step => step.type==='text'));
   };
   const handleEditField = (field: FormDataKey) => {
@@ -222,6 +232,9 @@ const ChatScreen = () => {
     try {
       await axios.post('http://192.168.1.4:3000/auth/save-user-data', formData);
       
+
+       // Dispatch the action to save form data in Redux
+    dispatch(saveFormData(formData));
       Alert.alert('Success', 'Your details are saved successfully.');
       setMessages([
         ...messages,
@@ -379,8 +392,21 @@ const ChatScreen = () => {
               msg.type === 'bot' ? styles.botMessage : styles.userMessage,
             ]}
           >
+             {msg.type === 'bot' && (
+            <View style={styles.botMessageContainer}>
+              <Image
+                source={botProfileImage}
+                style={styles.botProfileImage}
+              />
+              <Text style={styles.messageText}>
+                {msg.text}
+              </Text>
+            </View>
+          )}
+          {msg.type === 'user' && (
             <Text style={styles.messageText}>{msg.text}</Text>
-          </View>
+          )}
+            </View>
         ))}
         
         {/* Render edit options if in editing mode */}
@@ -429,11 +455,11 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 12,
     marginBottom: 8,
-    maxWidth: '80%',
+    maxWidth: '100%',
     shadowColor: '#000', // Subtle shadow
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 5,
+    shadowRadius: 8,
   },
   userMessage: {
     backgroundColor: '#d1ffd3', 
@@ -520,6 +546,16 @@ const styles = StyleSheet.create({
     flexDirection: 'column',
     alignItems: 'stretch',
     marginVertical: 10,
+  },
+  botProfileImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    marginRight: 10, // Space between image and message text
+  },
+  botMessageContainer: {
+    flexDirection: 'row', // Align image and text in a row
+    alignItems: 'center', // Center align image and text
   },
 });
 

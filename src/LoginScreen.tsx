@@ -87,7 +87,7 @@ const LoginScreen: React.FC<{ navigation: any }> = ({ navigation }) => {
       } catch (error) {
         if (axios.isAxiosError(error)) {
           console.error('Login error:', error.response?.data?.error || error.message);
-          setErrorMessage('Invalid credentials');
+          setErrorMessage('Error in Login');
           setShowError(true); // Show the error message
         } else {
           console.error('Unexpected error:', (error as Error).message);

@@ -12,6 +12,7 @@ import HomeScreen from './src/HomeScreen';
 import { createStore } from 'redux';
 import { Provider } from 'react-redux';
 import rootReducer from './src/reducers';
+import SplashScreen from './src/SplashScreen';
 import HelpScreen from './src/HelpScreen';
 
 const store = createStore(rootReducer);
@@ -98,8 +99,10 @@ const App: React.FC = () => {
             keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}
           >
             <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name='Splash' component={SplashScreen}/>
               <Stack.Screen name="Login" component={LoginScreen} />
               <Stack.Screen name="Signup" component={SignupScreen} />
+
               <Stack.Screen name="Home" component={TabNavigator} />
             </Stack.Navigator>
           </KeyboardAvoidingView>

@@ -1,5 +1,5 @@
 import { combineReducers } from 'redux';
-import { SAVE_FORM_DATA, FormAction } from './action';
+import { SAVE_FORM_DATA, FormAction } from './actions';
 
 // Define the type for form data
 interface FormData {
